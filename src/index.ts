@@ -8,28 +8,62 @@ import { HelloResolver } from "./resolvers/hello";
 import { PostsResolver } from "./resolvers/posts";
 import { UsersResolver } from "./resolvers/users";
 
+import redis from 'redis';
+import session from 'express-session';
+import connectRedis from 'connect-redis';
+import { MyContext } from "./types";
+import { debug } from "console";
+
 const main = async () => {
     const orm = await MikroORM.init(microconfig);
     await orm.getMigrator().up();
 
     const app = express();
 
-    // app.get("/", (_, res) => {  
-    //     res.send("hello");
-    // });
+    const RedisStore = connectRedis(session);
+    const redisClient = redis.createClient();
+    redisClient.on("error", console.error)
+
+    app.use(
+    session({
+        name: 'qid',
+        store: new RedisStore({ 
+            client: redisClient,
+            disableTTL: true,
+            disableTouch: true
+        }),
+        cookie: {
+            maxAge: 1000 * 60 *60 *24 *365,
+            httpOnly: true,
+            sameSite: 'lax', // csrf
+            secure: __prod__, // cookie only works in htpps
+        },
+        saveUninitialized: false,
+        secret: 'jdfklqle1l1',
+        resave: false,
+    })
+    );
 
     const apolloServer = new ApolloServer({
         schema: await buildSchema({
             resolvers: [HelloResolver, PostsResolver, UsersResolver],
             validate: false
         }),
-        context: () => ({ em: orm.em })
+        context: ({ req, res }) : MyContext => ({ em: orm.em, req, res }),
+        // tracing: true
     });
 
     apolloServer.applyMiddleware({ app });
 
-    app.listen(4000, () => {
-        console.log("server started on localhost:4000");
+    const server = app.listen(4001, () => {
+        console.log("server started on localhost:4001");
+    })
+
+    process.on('SIGTERM', () => {
+    debug('SIGTERM signal received: closing HTTP server')
+    server.close(() => {
+        debug('HTTP server closed')
+    })
     })
 };
 
