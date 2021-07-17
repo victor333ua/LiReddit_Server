@@ -13,6 +13,7 @@ import session from 'express-session';
 import connectRedis from 'connect-redis';
 import { MyContext } from "./types";
 import { debug } from "console";
+import cors from 'cors';
 
 const main = async () => {
     const orm = await MikroORM.init(microconfig);
@@ -23,6 +24,13 @@ const main = async () => {
     const RedisStore = connectRedis(session);
     const redisClient = redis.createClient();
     redisClient.on("error", console.error)
+
+    app.use(
+        cors({
+            origin: "http://localhost:3000",
+            credentials: true,
+        })
+    )
 
     app.use(
     session({
@@ -53,17 +61,20 @@ const main = async () => {
         // tracing: true
     });
 
-    apolloServer.applyMiddleware({ app });
+    apolloServer.applyMiddleware({ 
+        app,
+        cors: false,
+     });
 
     const server = app.listen(4001, () => {
         console.log("server started on localhost:4001");
     })
 
     process.on('SIGTERM', () => {
-    debug('SIGTERM signal received: closing HTTP server')
-    server.close(() => {
-        debug('HTTP server closed')
-    })
+        debug('SIGTERM signal received: closing HTTP server')
+        server.close(() => {
+            debug('HTTP server closed')
+        })
     })
 };
 
