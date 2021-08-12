@@ -1,5 +1,5 @@
 import { MikroORM } from "@mikro-orm/core";
-import { __prod__ } from './constants';
+import { COOKIE_NAME, __prod__ } from './constants';
 import microconfig from "./mikro-orm.config";
 import express from 'express';
 import { ApolloServer } from "apollo-server-express";
@@ -17,10 +17,13 @@ import cors from 'cors';
 
 const main = async () => {
     const orm = await MikroORM.init(microconfig);
-    await orm.getMigrator().up();
+    const migrator = orm.getMigrator();
+    // await migrator.createMigration();
+    await migrator.up();
 
     const app = express();
 
+ // start db : redis-server from cli, path already installed   
     const RedisStore = connectRedis(session);
     const redisClient = redis.createClient();
     redisClient.on("error", console.error)
@@ -33,23 +36,23 @@ const main = async () => {
     )
 
     app.use(
-    session({
-        name: 'qid',
-        store: new RedisStore({ 
-            client: redisClient,
-            disableTTL: true,
-            disableTouch: true
-        }),
-        cookie: {
-            maxAge: 1000 * 60 *60 *24 *365,
-            httpOnly: true,
-            sameSite: 'lax', // csrf
-            secure: __prod__, // cookie only works in htpps
-        },
-        saveUninitialized: false,
-        secret: 'jdfklqle1l1',
-        resave: false,
-    })
+        session({
+            name: COOKIE_NAME,
+            store: new RedisStore({ 
+                client: redisClient,
+                disableTTL: true,   // Disables key expiration completely
+                disableTouch: true // Disables re-saving and resetting the TTL when using touch
+            }),
+            cookie: {
+                maxAge: 1000 * 60 *60 *24 *365,
+                httpOnly: true,
+                sameSite: 'lax', // csrf
+                secure: __prod__, // cookie only works in htpps
+            },
+            saveUninitialized: false,
+            secret: 'jdfklqle1l1',
+            resave: false,
+        })
     );
 
     const apolloServer = new ApolloServer({

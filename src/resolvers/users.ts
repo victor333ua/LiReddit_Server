@@ -2,6 +2,7 @@ import { Arg, Ctx, Field, InputType, Mutation, ObjectType, Query, Resolver } fro
 import argon2 from 'argon2';
 import { MyContext } from "../types";
 import { User } from "../entities/User";
+import { COOKIE_NAME } from "../constants";
 
 @InputType()
 class UsernamePasswordInput {
@@ -42,7 +43,7 @@ export class UsersResolver {
     @Mutation(() => UserResponse)
     async register(
         @Arg('options') options: UsernamePasswordInput,
-        @Ctx() { em }: MyContext
+        @Ctx() { em, req }: MyContext
     ): Promise<UserResponse> {
         if(options.username.length <= 2) {
             return {
@@ -81,6 +82,7 @@ export class UsersResolver {
                 }
             }
         }
+        req.session.userId = user.id;
         return { user };
     }
 
@@ -112,4 +114,22 @@ export class UsersResolver {
 
         return { user };
     }
+
+    @Mutation(() => Boolean)
+    async logout(
+        @Ctx() { req, res }: MyContext
+    ): Promise<Boolean> {
+        return new Promise(resolve => {
+            req.session.destroy(err => {
+                res.clearCookie(COOKIE_NAME);
+                if (err) {
+                    console.log(err);
+                    resolve(false);
+                    return;
+                }
+                resolve(true);
+            })
+        })
+    }
+
 }
