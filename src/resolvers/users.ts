@@ -6,6 +6,9 @@ import { COOKIE_NAME } from "../constants";
 import { UsernamePasswordInput } from "./UsernamePasswordInput";
 import { validateRegister } from './../utils/validateRegister';
 import { sendEmail } from "./../utils/sendEmail";
+import {v4} from 'uuid';
+import { FORGET_PASSWORD_PREFIX } from './../constants';
+import { StringDecoder } from "node:string_decoder";
 
 @ObjectType()
 class FieldError {
@@ -123,7 +126,7 @@ export class UsersResolver {
     @Mutation(() => UserResponse)
     async forgotPassword(
         @Arg("usernameOrEmail") usernameOrEmail: string,
-        @Ctx() { em }: MyContext
+        @Ctx() { em, redis }: MyContext
     ): Promise<UserResponse> {
         const user = await em.findOne(User,
             usernameOrEmail.includes("@")
@@ -138,10 +141,17 @@ export class UsersResolver {
                 }]
             }
         };
-        const href = `http://localhost:3000/resetPassword/${user.id}`
+        const token = v4();
+        await redis.set(
+            FORGET_PASSWORD_PREFIX + token,
+            user.id, 
+            'ex', 
+            1000 * 60 * 60 * 24 * 3
+        );
+        const href = `http://localhost:3000/resetPassword/${token}`
 
         const isSuccess = await sendEmail(
-            "victor333.ua@gmail.com",
+            user.email,
             "<div>" +
             "visit the page and set new password  " +
             `<a href=${href}>Reset Password</a>` +
@@ -162,17 +172,21 @@ export class UsersResolver {
 
     @Mutation(()=> Boolean)
     async resetPassword(
-        @Arg("userId") userId: number,
+        @Arg("token") token: string,
         @Arg("password") password: string,
-        @Ctx() { em }: MyContext
+        @Ctx() { em, redis }: MyContext
     ): Promise<Boolean> {
-        const user = await em.findOne(User, { id: userId });
+        const key = FORGET_PASSWORD_PREFIX + token;
+        const userId = await redis.get(key);
+        if (!userId) return false;
+        const user = await em.findOne(User, { id: Number(userId) });
         if (!user) return false;
 
         const hashPassword = await argon2.hash(password);
         user.password = hashPassword;
         try {
             await em.persistAndFlush(user);
+            await redis.del(key);
         } catch(err) {
             console.log(err);
             return false;
