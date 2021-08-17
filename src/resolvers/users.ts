@@ -1,16 +1,11 @@
-import { Arg, Ctx, Field, InputType, Mutation, ObjectType, Query, Resolver } from "type-graphql"
+import { Arg, Ctx, Field, Mutation, ObjectType, Query, Resolver } from "type-graphql"
 import argon2 from 'argon2';
 import { MyContext } from "../types";
 import { User } from "../entities/User";
 import { COOKIE_NAME } from "../constants";
-
-@InputType()
-class UsernamePasswordInput {
-    @Field()
-    username: string
-    @Field()
-    password: string
-};
+import { UsernamePasswordInput } from "./UsernamePasswordInput";
+import { validateRegister } from './../utils/validateRegister';
+import { sendEmail } from "./../utils/sendEmail";
 
 @ObjectType()
 class FieldError {
@@ -45,27 +40,15 @@ export class UsersResolver {
         @Arg('options') options: UsernamePasswordInput,
         @Ctx() { em, req }: MyContext
     ): Promise<UserResponse> {
-        if(options.username.length <= 2) {
-            return {
-                errors: [{
-                    field: "username",
-                    message: "length must be greater 2"
-                }]
-            };
-        }
-        if(options.password.length <= 2) {
-            return {
-                errors: [{
-                    field: "password",
-                    message: "length must be greater 2"
-                }]
-            }
-        }
+       
+        const errors = validateRegister(options);
+        if (errors) return { errors };
 
         const hashPassword = await argon2.hash(options.password);
         const user = em.create(User, {
              username: options.username,
-             password: hashPassword 
+             password: hashPassword,
+             email: options.email 
         });
         try {
             await em.persistAndFlush(user);
@@ -88,19 +71,24 @@ export class UsersResolver {
 
     @Mutation(() => UserResponse)
     async login(
-        @Arg('options') options: UsernamePasswordInput,
+        @Arg('usernameOrEmail') usernameOrEmail: string,
+        @Arg('password') password: string,
         @Ctx() { em, req }: MyContext
     ): Promise<UserResponse> {
-        const user = await em.findOne(User, { username: options.username });
+        const user = await em.findOne(User,
+            usernameOrEmail.includes("@")
+            ? { email: usernameOrEmail }
+            : { username: usernameOrEmail }
+        );
         if(!user) {
             return {
                 errors: [{
-                    field: 'username',
+                    field: "usernameOrEmail",
                     message: "that username doesn't exist"
                 }]
             }
         }
-        const valid = await argon2.verify(user.password, options.password);
+        const valid = await argon2.verify(user.password, password);
         if(!valid) {
             return {
                 errors: [{
@@ -132,4 +120,63 @@ export class UsersResolver {
         })
     }
 
-}
+    @Mutation(() => UserResponse)
+    async forgotPassword(
+        @Arg("usernameOrEmail") usernameOrEmail: string,
+        @Ctx() { em }: MyContext
+    ): Promise<UserResponse> {
+        const user = await em.findOne(User,
+            usernameOrEmail.includes("@")
+            ? { email: usernameOrEmail }
+            : { username: usernameOrEmail }
+        );        
+        if(!user) {
+            return {
+                errors: [{
+                    field: "usernameOrEmail",
+                    message: "that username doesn't exist"
+                }]
+            }
+        };
+        const href = `http://localhost:3000/resetPassword/${user.id}`
+
+        const isSuccess = await sendEmail(
+            "victor333.ua@gmail.com",
+            "<div>" +
+            "visit the page and set new password  " +
+            `<a href=${href}>Reset Password</a>` +
+            "</div>"
+        );
+
+        if (!isSuccess) {
+            return {
+                errors: [{
+                    field: "failEmail",
+                    message: ""
+                }]
+            }
+        };
+
+        return { user };
+    }
+
+    @Mutation(()=> Boolean)
+    async resetPassword(
+        @Arg("userId") userId: number,
+        @Arg("password") password: string,
+        @Ctx() { em }: MyContext
+    ): Promise<Boolean> {
+        const user = await em.findOne(User, { id: userId });
+        if (!user) return false;
+
+        const hashPassword = await argon2.hash(password);
+        user.password = hashPassword;
+        try {
+            await em.persistAndFlush(user);
+        } catch(err) {
+            console.log(err);
+            return false;
+        }
+        return true;
+    }
+};
