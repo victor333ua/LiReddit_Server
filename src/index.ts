@@ -1,6 +1,5 @@
-import { MikroORM } from "@mikro-orm/core";
+import "reflect-metadata";
 import { COOKIE_NAME, __prod__ } from './constants';
-import microconfig from "./mikro-orm.config";
 import express from 'express';
 import { ApolloServer } from "apollo-server-express";
 import { buildSchema } from "type-graphql";
@@ -14,14 +13,20 @@ import connectRedis from 'connect-redis';
 import { MyContext } from "./types";
 import { debug } from "console";
 import cors from 'cors';
+import {createConnection} from 'typeorm';
+import { Post } from "./entities/Post";
+import { User } from "./entities/User";
 
 const main = async () => {
-
-    const orm = await MikroORM.init(microconfig);
-    const migrator = orm.getMigrator();
-    // await migrator.createMigration();
-    // await orm.em.nativeDelete(User, {});
-    await migrator.up();
+    await createConnection({
+        type: 'postgres',
+        database: 'lireddit2',
+        username: "postgres",
+        password: "victory3",
+        logging: true,
+        synchronize: true,
+        entities: [Post, User]
+    });
 
     const app = express();
 
@@ -46,7 +51,7 @@ const main = async () => {
                 disableTouch: true // Disables re-saving and resetting the TTL when using touch
             }),
             cookie: {
-                maxAge: 1000 * 60 *60 *24 *365,
+                maxAge: 1000 * 60 * 60 * 24 * 365,
                 httpOnly: true,
                 sameSite: 'lax', // csrf
                 secure: __prod__, // cookie only works in htpps
@@ -62,7 +67,7 @@ const main = async () => {
             resolvers: [HelloResolver, PostsResolver, UsersResolver],
             validate: false
         }),
-        context: ({ req, res }) : MyContext => ({ em: orm.em, req, res, redis }),
+        context: ({ req, res }) : MyContext => ({ req, res, redis }),
         // tracing: true
     });
 

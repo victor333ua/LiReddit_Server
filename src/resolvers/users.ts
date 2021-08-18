@@ -8,7 +8,6 @@ import { validateRegister } from './../utils/validateRegister';
 import { sendEmail } from "./../utils/sendEmail";
 import {v4} from 'uuid';
 import { FORGET_PASSWORD_PREFIX } from './../constants';
-import { StringDecoder } from "node:string_decoder";
 
 @ObjectType()
 class FieldError {
@@ -29,60 +28,64 @@ class UserResponse {
 @Resolver()
 export class UsersResolver {
     @Query(() => User, { nullable: true })
-    async me( @Ctx() { em, req }: MyContext ) {
+    async me( @Ctx() { req }: MyContext ) {
         const userId = req.session.userId;
         if (!userId) {
             return null;
         }
-        const user = await em.findOne(User, { id: userId });
-        return user;
+        return await User.findOne(userId);
     }
 
     @Mutation(() => UserResponse)
     async register(
         @Arg('options') options: UsernamePasswordInput,
-        @Ctx() { em, req }: MyContext
+        @Ctx() { req }: MyContext
     ): Promise<UserResponse> {
        
         const errors = validateRegister(options);
         if (errors) return { errors };
 
         const hashPassword = await argon2.hash(options.password);
-        const user = em.create(User, {
-             username: options.username,
-             password: hashPassword,
-             email: options.email 
-        });
+        let user;
         try {
-            await em.persistAndFlush(user);
+            user = await User.create({
+                username: options.username,
+                password: hashPassword,
+                email: options.email 
+           }).save();
+            req.session.userId = user.id;
+            return { user };
         } catch(err) {
+            let message;
             // duplicate username error
-            if (err.code === "23505") {
-                return {
-                    errors: [
-                        {
-                            field: "username",
-                            message: "username already taken"
-                        }
-                    ]
-                }
-            }
+            if (err.code === "23505") 
+                message = "username already taken"
+            else 
+                message = err.detail;
+
+            return {
+                errors: [
+                    {
+                        field: "username",
+                        message
+                    }
+                ]
+            }    
         }
-        req.session.userId = user.id;
-        return { user };
     }
 
     @Mutation(() => UserResponse)
     async login(
         @Arg('usernameOrEmail') usernameOrEmail: string,
         @Arg('password') password: string,
-        @Ctx() { em, req }: MyContext
+        @Ctx() { req }: MyContext
     ): Promise<UserResponse> {
-        const user = await em.findOne(User,
+        const user = await User.findOne({ where: 
             usernameOrEmail.includes("@")
             ? { email: usernameOrEmail }
             : { username: usernameOrEmail }
-        );
+        });
+
         if(!user) {
             return {
                 errors: [{
@@ -126,13 +129,14 @@ export class UsersResolver {
     @Mutation(() => UserResponse)
     async forgotPassword(
         @Arg("usernameOrEmail") usernameOrEmail: string,
-        @Ctx() { em, redis }: MyContext
+        @Ctx() { redis }: MyContext
     ): Promise<UserResponse> {
-        const user = await em.findOne(User,
+        const user = await User.findOne({ where: 
             usernameOrEmail.includes("@")
             ? { email: usernameOrEmail }
             : { username: usernameOrEmail }
-        );        
+        }); 
+
         if(!user) {
             return {
                 errors: [{
@@ -174,18 +178,21 @@ export class UsersResolver {
     async resetPassword(
         @Arg("token") token: string,
         @Arg("password") password: string,
-        @Ctx() { em, redis }: MyContext
+        @Ctx() { redis }: MyContext
     ): Promise<Boolean> {
         const key = FORGET_PASSWORD_PREFIX + token;
         const userId = await redis.get(key);
         if (!userId) return false;
-        const user = await em.findOne(User, { id: Number(userId) });
+
+        const userIdNum = Number(userId);
+        const user = await User.findOne(userIdNum);
         if (!user) return false;
 
-        const hashPassword = await argon2.hash(password);
-        user.password = hashPassword;
         try {
-            await em.persistAndFlush(user);
+            await User.update(
+                { id: userIdNum },
+                { password: await argon2.hash(password) }
+            );
             await redis.del(key);
         } catch(err) {
             console.log(err);
