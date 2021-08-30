@@ -3,7 +3,7 @@ import { Post } from "../entities/Post";
 import { MyContext } from "src/types";
 import { isAuth } from "../middleware/isAuth";
 import { getConnection } from "typeorm";
-import { User } from "../entities/User";
+import { Updoot } from "../entities/Updoot";
 
 @InputType()
 class PostInput {
@@ -91,9 +91,9 @@ export class PostsResolver {
     ): Promise<Post | undefined> {
         return Post.findOne(id);
     }
-
-    @UseMiddleware(isAuth)
+ 
     @Mutation(() => Post) 
+    @UseMiddleware(isAuth)
         async createPost(
             @Arg("input") input: PostInput,
             @Ctx() { req }: MyContext
@@ -124,5 +124,49 @@ export class PostsResolver {
     ): Promise<boolean> { 
        await Post.delete(id);
        return true;      
+    }
+
+    @Mutation(() => Boolean)
+    @UseMiddleware(isAuth)
+    async vote(
+        @Arg("postId", () => Int) postId: number,
+        @Arg("value", () => Int) value: number,
+        @Ctx() { req }: MyContext
+    ): Promise<boolean> {
+        const { userId } = req.session;
+
+        await getConnection().transaction(async transactionalEntityManager => {
+
+            await transactionalEntityManager.insert(Updoot, {
+                userId,
+                postId,
+                value
+            });
+
+            await transactionalEntityManager.createQueryBuilder()
+            .update(Post)
+            .set({
+               points: () => `points + ${value}` 
+            })
+            .where("id = :id", { id: postId })
+            .execute();
+        });
+  
+        // await getConnection().query(
+        //     `
+        //     START TRANSACTION;
+
+        //     insert into updoot ("userId", "postId", value)
+        //     values (${userId}, ${postId}, ${value});
+
+        //     update post
+        //     set points = points + ${value}
+        //     where id = ${postId};
+
+        //     COMMIT;
+        //     `
+        // );
+        
+        return true;
     }
 }
