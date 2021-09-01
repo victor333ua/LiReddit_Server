@@ -1,8 +1,8 @@
-import { Arg, Ctx, Field, FieldResolver, InputType, Int, Mutation, ObjectType, Query, Resolver, Root, UseMiddleware } from "type-graphql"
+import { Arg, Ctx, Field, FieldResolver, Float, InputType, Int, Mutation, ObjectType, Query, Resolver, Root, UseMiddleware } from "type-graphql"
 import { Post } from "../entities/Post";
 import { MyContext } from "src/types";
 import { isAuth } from "../middleware/isAuth";
-import { getConnection } from "typeorm";
+import { getConnection, Timestamp } from "typeorm";
 import { Updoot } from "../entities/Updoot";
 
 @InputType()
@@ -36,10 +36,13 @@ export class PostsResolver {
     @Query(() => PostsResponse)
     async posts(
         @Arg('limit', () => Int) limit: number,
-        @Arg('cursor', () => String, { nullable: true }) cursor: string | null
+        @Arg('cursor', () => String, { nullable: true }) cursor: string | null,
+        @Ctx() { req }: MyContext
     ): Promise<PostsResponse> {
         const realLimit = Math.min(50, limit);
         const realLimitPlusOne = realLimit + 1;
+
+        const { userId } = req.session;
 
         //don't work due to 'user' is service word in postgre
         // const qb = getConnection()
@@ -55,10 +58,17 @@ export class PostsResolver {
 
         // const posts = await qb.getMany();
 
-        const replacements: any[] = [realLimitPlusOne];
+        let strVoteValue = ""; let strCursor = "";
+
+        if (userId) strVoteValue = 
+        `, (select value from updoot where "userId" = ${userId} and "postId" = p.id) "voteValue"`;
+
+        const parameters: any[] = [];
         if (cursor) {
-            replacements.push(new Date(parseInt(cursor)));
-        }
+            strCursor = `where p."createdAt" < $1`;           
+            parameters.push(new Date(parseInt(cursor)).toLocaleDateString());
+        };
+       
 
         const posts = await getConnection().query(
           `
@@ -70,13 +80,14 @@ export class PostsResolver {
               'createdAt', "user"."createdAt",
               'updatedAt', "user"."updatedAt"
           ) creator
+          ${strVoteValue}
           from post p
           inner join "user" on p."creatorId" = "user".id
-          ${cursor ? 'where p."createdAt" < $2' : ""}
+          ${strCursor}
           order by p."createdAt" DESC
-          limit $1
+          limit ${realLimitPlusOne}
           `,
-          replacements  
+          parameters
         );
         
         return {
@@ -106,6 +117,7 @@ export class PostsResolver {
     }
 
     @Mutation(() => Post, { nullable: true }) 
+    @UseMiddleware(isAuth)
     async updatePost(
         @Arg("id") id: number,
         @Arg("title", () => String, { nullable: true }) title: string,
@@ -119,6 +131,7 @@ export class PostsResolver {
     }
 
     @Mutation(() => Boolean) 
+    @UseMiddleware(isAuth)
     async deletePost(
         @Arg("id") id: number
     ): Promise<boolean> { 
@@ -129,29 +142,46 @@ export class PostsResolver {
     @Mutation(() => Boolean)
     @UseMiddleware(isAuth)
     async vote(
-        @Arg("postId", () => Int) postId: number,
-        @Arg("value", () => Int) value: number,
+        @Arg("postId", () => Float!) postId: number,
+        @Arg("value", () => Int!) value: number,
         @Ctx() { req }: MyContext
     ): Promise<boolean> {
         const { userId } = req.session;
+        const updoot = await Updoot.findOne({postId, userId});
 
-        await getConnection().transaction(async transactionalEntityManager => {
-
-            await transactionalEntityManager.insert(Updoot, {
-                userId,
-                postId,
-                value
+        if (updoot && value !== updoot.value) {
+            await getConnection().transaction(async tm => {
+                await Updoot.update(
+                    { userId: updoot.userId,
+                      postId: updoot.postId },
+                    { value }
+                );
+            
+                await tm.createQueryBuilder()
+                .update(Post)
+                .set({
+                    points: () => `points + ${2*value}` 
+                })
+                .where("id = :id", { id: postId })
+                .execute();
             });
+        } else if (!updoot) {
+            await getConnection().transaction(async tm => {
+                await tm.insert(Updoot, {
+                    userId,
+                    postId,
+                    value
+                });
+                await tm.createQueryBuilder()
+                .update(Post)
+                .set({
+                    points: () => `points + ${value}` 
+                })
+                .where("id = :id", { id: postId })
+                .execute();
+            });
+        };
 
-            await transactionalEntityManager.createQueryBuilder()
-            .update(Post)
-            .set({
-               points: () => `points + ${value}` 
-            })
-            .where("id = :id", { id: postId })
-            .execute();
-        });
-  
         // await getConnection().query(
         //     `
         //     START TRANSACTION;
@@ -166,7 +196,7 @@ export class PostsResolver {
         //     COMMIT;
         //     `
         // );
-        
+
         return true;
     }
 }
