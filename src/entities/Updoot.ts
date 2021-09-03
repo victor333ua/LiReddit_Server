@@ -16,14 +16,18 @@ export class Updoot extends BaseEntity {
   userId: number;
 
   @Field()
-  @ManyToOne(() => User, (user) => user.updoots)
+  @ManyToOne(() => User, (user) => user.updoots, {
+    onDelete: 'CASCADE'
+  })
   user: User;
 
   @Field()
   @PrimaryColumn()
   postId: number;
 
-  @ManyToOne(() => Post, (post) => post.updoots)
+  @ManyToOne(() => Post, (post) => post.updoots, {
+    onDelete: 'CASCADE'
+  })
   post: Post;
 
   @Field(() => String)

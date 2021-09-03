@@ -2,7 +2,7 @@ import { Arg, Ctx, Field, FieldResolver, Float, InputType, Int, Mutation, Object
 import { Post } from "../entities/Post";
 import { MyContext } from "src/types";
 import { isAuth } from "../middleware/isAuth";
-import { getConnection, Timestamp } from "typeorm";
+import { getConnection, getRepository } from "typeorm";
 import { Updoot } from "../entities/Updoot";
 
 @InputType()
@@ -100,7 +100,7 @@ export class PostsResolver {
     post(
         @Arg("id") id: number
     ): Promise<Post | undefined> {
-        return Post.findOne(id);
+        return Post.findOne(id, { relations: ["creator"] });
     }
  
     @Mutation(() => Post) 
@@ -109,7 +109,6 @@ export class PostsResolver {
             @Arg("input") input: PostInput,
             @Ctx() { req }: MyContext
         ): Promise<Post> {
-
             return Post.create({
                 ...input,
                 creatorId: req.session.userId
@@ -119,15 +118,12 @@ export class PostsResolver {
     @Mutation(() => Post, { nullable: true }) 
     @UseMiddleware(isAuth)
     async updatePost(
-        @Arg("id") id: number,
+        @Arg("id", () => Float!) id: number,
         @Arg("title", () => String, { nullable: true }) title: string,
-    ): Promise<Post | null> { 
-        const post = await Post.findOne(id);
-        if (!post) return null;
-        if (typeof title !== undefined) {
-           await Post.update({id}, {title})
-        }
-        return post;
+        @Arg("text", () => String, { nullable: true }) text: string,
+    ): Promise<Post | undefined> {       
+           await getRepository(Post).save({id, title, text });
+           return Post.findOne(id);
     }
 
     @Mutation(() => Boolean) 
@@ -182,21 +178,26 @@ export class PostsResolver {
             });
         };
 
-        // await getConnection().query(
-        //     `
-        //     START TRANSACTION;
-
-        //     insert into updoot ("userId", "postId", value)
-        //     values (${userId}, ${postId}, ${value});
-
-        //     update post
-        //     set points = points + ${value}
-        //     where id = ${postId};
-
-        //     COMMIT;
-        //     `
-        // );
-
+        // await getConnection().transaction(async (tm) => {
+        //     await tm.query(
+        //       `
+        // insert into updoot ("userId", "postId", value)
+        // values ($1, $2, $3)
+        //     `,
+        //       [userId, postId, realValue]
+        //     );
+    
+        //     await tm.query(
+        //       `
+        // update post
+        // set points = points + $1
+        // where id = $2
+        //   `,
+        //       [realValue, postId]
+        //     );
+        //   });
+        // }
+        
         return true;
     }
 }
