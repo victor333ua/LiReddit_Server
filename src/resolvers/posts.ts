@@ -4,6 +4,7 @@ import { MyContext } from "src/types";
 import { isAuth } from "../middleware/isAuth";
 import { getConnection, getRepository } from "typeorm";
 import { Updoot } from "../entities/Updoot";
+import { User } from "../entities/User";
 
 @InputType()
 class PostInput {
@@ -28,10 +29,10 @@ export class PostsResolver {
         return root.text.slice(0, 50);
     }
 
-    // @FieldResolver(() => User)
-    // creator(@Root() root: Post): Promise<User | undefined> {
-    //     return User.findOne(root.creatorId);
-    // }
+    @FieldResolver(() => User)
+    creator(@Root() root: Post): Promise<User | undefined> {
+        return User.findOne(root.creatorId);
+    }
     
     @Query(() => PostsResponse)
     async posts(
@@ -72,17 +73,9 @@ export class PostsResolver {
 
         const posts = await getConnection().query(
           `
-          select p.*, 
-          json_build_object(
-              'id', "user".id,
-              'username', "user".username,
-              'email', "user".email,
-              'createdAt', "user"."createdAt",
-              'updatedAt', "user"."updatedAt"
-          ) creator
+          select p.* 
           ${strVoteValue}
           from post p
-          inner join "user" on p."creatorId" = "user".id
           ${strCursor}
           order by p."createdAt" DESC
           limit ${realLimitPlusOne}
@@ -100,7 +93,8 @@ export class PostsResolver {
     post(
         @Arg("id") id: number
     ): Promise<Post | undefined> {
-        return Post.findOne(id, { relations: ["creator"] });
+        // return Post.findOne(id, { relations: ["creator"] });
+        return Post.findOne(id);
     }
  
     @Mutation(() => Post) 
