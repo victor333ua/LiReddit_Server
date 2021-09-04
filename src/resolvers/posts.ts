@@ -24,26 +24,38 @@ class PostsResponse {
 
 @Resolver(Post)
 export class PostsResolver {
+
+    @FieldResolver(() => Int, {nullable: true})
+    async voteValue(
+        @Root() post: Post,
+        @Ctx() { req, updootLoader }: MyContext
+    ) {
+        const { userId } = req.session;
+        if (!userId) return null;
+
+        // const updoot = await Updoot.findOne({postId: root.id, userId});
+        const updoot = await updootLoader.load({postId: post.id, userId})
+        return updoot ? updoot.value : null;
+    }
+
     @FieldResolver(() => String)
     textSnippet(@Root() root: Post) {
         return root.text.slice(0, 50);
     }
 
     @FieldResolver(() => User)
-    creator(@Root() root: Post): Promise<User | undefined> {
-        return User.findOne(root.creatorId);
+    creator(@Root() root: Post, @Ctx() { userLoader }: MyContext) {
+        // return User.findOne(root.creatorId);
+        return userLoader.load(root.creatorId);
     }
     
     @Query(() => PostsResponse)
     async posts(
         @Arg('limit', () => Int) limit: number,
-        @Arg('cursor', () => String, { nullable: true }) cursor: string | null,
-        @Ctx() { req }: MyContext
-    ): Promise<PostsResponse> {
+        @Arg('cursor', () => String, { nullable: true }) cursor: string | null
+    ) {
         const realLimit = Math.min(50, limit);
         const realLimitPlusOne = realLimit + 1;
-
-        const { userId } = req.session;
 
         //don't work due to 'user' is service word in postgre
         // const qb = getConnection()
@@ -59,22 +71,16 @@ export class PostsResolver {
 
         // const posts = await qb.getMany();
 
-        let strVoteValue = ""; let strCursor = "";
-
-        if (userId) strVoteValue = 
-        `, (select value from updoot where "userId" = ${userId} and "postId" = p.id) "voteValue"`;
-
         const parameters: any[] = [];
+        let strCursor = "";
         if (cursor) {
             strCursor = `where p."createdAt" < $1`;           
             parameters.push(new Date(parseInt(cursor)).toLocaleDateString());
         };
        
-
         const posts = await getConnection().query(
           `
           select p.* 
-          ${strVoteValue}
           from post p
           ${strCursor}
           order by p."createdAt" DESC
