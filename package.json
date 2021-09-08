@@ -4,6 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "typeorm:ts": "ts-node --transpile-only ./node_modules/typeorm/cli.js",
+    "gen-migration": "yarn typeorm:ts migration:generate -n",
+    "build": "tsc",
     "watch": "tsc --watch",
     "dev": "nodemon dist/index.js",
     "start": "node dist/index.js",
@@ -32,6 +35,7 @@
     "connect-redis": "^6.0.0",
     "cors": "^2.8.5",
     "dataloader": "^2.0.0",
+    "dotenv-safe": "^8.2.0",
     "express": "^4.17.1",
     "express-session": "^1.17.2",
     "graphql": "^15.5.1",
