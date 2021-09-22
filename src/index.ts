@@ -38,12 +38,12 @@ const main = async () => {
 
     const app = express();
 
- // start db : redis-server from cli, path already installed   
+ // start db : redis-server from cli, path env already installed   
     const RedisStore = connectRedis(session);
     const redis = new Redis(process.env.REDIS_URL);
     redis.on("error", console.error);
 
-    app.set("proxy", 1);
+    // app.set("proxy", 1);
 
     app.use(
         cors({
@@ -73,6 +73,7 @@ const main = async () => {
     );
 
     const apolloServer = new ApolloServer({
+        playground: true,
         schema: await buildSchema({
             resolvers: [HelloResolver, PostsResolver, UsersResolver],
             validate: false
@@ -88,7 +89,7 @@ const main = async () => {
      });
 
     const server = app.listen(parseInt(process.env.PORT), () => {
-        console.log("server started on localhost:4001");
+        console.log(`server started on localhost:${process.env.PORT}`);
     })
 
     process.on('SIGTERM', () => {

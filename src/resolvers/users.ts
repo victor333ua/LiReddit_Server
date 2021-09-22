@@ -94,7 +94,17 @@ export class UsersResolver {
                 }]
             }
         }
-        const valid = await argon2.verify(user.password, password);
+        let valid = true;
+        try {
+            valid = await argon2.verify(user.password, password);
+        } catch(error) {
+            return {
+                errors: [{
+                    field: 'password',
+                    message: "incorrect password in db"
+                }]
+            }
+        };
         if(!valid) {
             return {
                 errors: [{
@@ -152,8 +162,7 @@ export class UsersResolver {
             'ex', 
             1000 * 60 * 60 * 24 * 3
         );
-        const href = `http://localhost:3000/resetPassword/${token}`
-
+        const href = `${process.env.CORS_ORIGIN}/resetPassword/${token}`;
         const isSuccess = await sendEmail(
             user.email,
             "<div>" +

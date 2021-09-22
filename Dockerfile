@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:16
+FROM node:16-alpine3.14
 
 WORKDIR /app
 
@@ -12,6 +12,6 @@ COPY .env.production .env
 
 RUN yarn build
 
-ENV NODE_ENV=production
+# ENV NODE_ENV=production
 
 CMD [ "node", "dist/index.js" ]

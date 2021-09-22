@@ -1,0 +1,27 @@
+version: '3.9'
+services:
+  lireddit-server:
+    image: vic333id/lirredit:1.0
+    ports:
+      - 4001:4000
+    environment: 
+      - DATABASE_URL=postgresql://postgres:victory3@pg-db/lireddit
+      - REDIS_URL=redis
+      - PORT=4000
+      - CORS_ORIGIN=http://localhost:3000
+  pg-db:
+    image: postgres:12.8-alpine
+    environment: 
+      - POSTGRES_PASSWORD=victory3
+      - POSTGRES_DB=lireddit
+    ports:
+      - 5435:5432
+    volumes: 
+      - pg-data:/lib/postgresql/data
+  redis: 
+    image: redis:6.2.5-alpine
+    ports:
+      - 6380:6379
+volumes: 
+  pg-data:
+    driver: local
