@@ -1,6 +1,6 @@
 import { Arg, Ctx, Field, FieldResolver, Float, InputType, Int, Mutation, ObjectType, Query, Resolver, Root, UseMiddleware } from "type-graphql"
 import { Post } from "../entities/Post";
-import { MyContext } from "src/types";
+import { MyContext } from "../types";
 import { isAuth } from "../middleware/isAuth";
 import { getConnection, getRepository } from "typeorm";
 import { Updoot } from "../entities/Updoot";

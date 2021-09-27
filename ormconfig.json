@@ -4,7 +4,7 @@
     "port": 5432,
     "username": "postgres",
     "password": "victory3",
-    "database": "lireddit3",
+    "database": "lireddit",
     "entities": ["src/entities/*.ts"],
     "migrations": ["src/migrations/*.ts"],
     "cli": {

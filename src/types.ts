@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import session from "express-session";
-import { Redis } from "ioredis";
+// import { Redis } from "ioredis";
+// import { Knex } from "knex";
 import { updootLoader } from "./utils/createUpdootLoader";
 import { userLoader } from "./utils/createUserLoader";
 
@@ -13,7 +14,8 @@ declare module 'express-session' {
 export type MyContext = {
     req: Request  & { session: session.Session & Partial<session.SessionData> };
     res: Response;
-    redis: Redis;
+    // redis: Redis;
+    // knex: Knex,
     userLoader: typeof userLoader;
     updootLoader: typeof updootLoader;
 };

@@ -8,9 +8,12 @@ import { HelloResolver } from "./resolvers/hello";
 import { PostsResolver } from "./resolvers/posts";
 import { UsersResolver } from "./resolvers/users";
 
-import Redis from 'ioredis';
 import session from 'express-session';
-import connectRedis from 'connect-redis';
+// import Redis from 'ioredis';
+// import connectRedis from 'connect-redis';
+import connectKnex from 'connect-session-knex';
+import { knex } from 'knex';
+
 import { MyContext } from "./types";
 import { debug } from "console";
 import cors from 'cors';
@@ -26,6 +29,9 @@ const main = async () => {
     const conn = await createConnection({
         type: 'postgres',
         url: process.env.DATABASE_URL,
+        ssl: {
+            rejectUnauthorized: false
+          },
         logging: true,
         // synchronize: true,
         migrations: [path.join(__dirname, "./migrations/*")],
@@ -39,9 +45,32 @@ const main = async () => {
     const app = express();
 
  // start db : redis-server from cli, path env already installed   
-    const RedisStore = connectRedis(session);
-    const redis = new Redis(process.env.REDIS_URL);
-    redis.on("error", console.error);
+    // const RedisStore = connectRedis(session);
+    // const redis = new Redis(process.env.REDIS_URL);
+    // redis.on("error", console.error);
+
+    const knexInstance: any = knex({
+        client: 'pg',
+        connection: {
+            connectionString: process.env.DATABASE_URL,
+            ssl: {
+                rejectUnauthorized: false
+              },
+        }
+    });
+    knexInstance.on('error', console.error);
+    
+    const KnexSessionStore = connectKnex(session);
+    const store = new KnexSessionStore({
+        knex: knexInstance,
+        tablename: 'sessions', // optional. Defaults to 'sessions'  
+      });
+
+    // const store = new RedisStore({ 
+    //     client: redis,
+    //     disableTTL: true,   // Disables key expiration completely
+    //     disableTouch: true // Disables re-saving and resetting the TTL when using touch
+    // });
 
     // app.set("proxy", 1);
 
@@ -55,11 +84,7 @@ const main = async () => {
     app.use(
         session({
             name: COOKIE_NAME,
-            store: new RedisStore({ 
-                client: redis,
-                disableTTL: true,   // Disables key expiration completely
-                disableTouch: true // Disables re-saving and resetting the TTL when using touch
-            }),
+            store,
             cookie: {
                 maxAge: 1000 * 60 * 60 * 24 * 365,
                 httpOnly: true,
@@ -79,7 +104,7 @@ const main = async () => {
             validate: false
         }),
         context: ({ req, res }) : MyContext => ({
-             req, res, redis, userLoader, updootLoader }),
+             req, res, userLoader, updootLoader }),
         
     });
 

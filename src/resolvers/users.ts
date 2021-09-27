@@ -1,4 +1,4 @@
-import { Arg, Ctx, Field, Mutation, ObjectType, Query, Resolver } from "type-graphql"
+import { Arg, Ctx, Field, Mutation, ObjectType, Query, Resolver, UseMiddleware } from "type-graphql"
 import argon2 from 'argon2';
 import { MyContext } from "../types";
 import { User } from "../entities/User";
@@ -6,8 +6,8 @@ import { COOKIE_NAME } from "../constants";
 import { UsernamePasswordInput } from "./UsernamePasswordInput";
 import { validateRegister } from './../utils/validateRegister';
 import { sendEmail } from "./../utils/sendEmail";
-import {v4} from 'uuid';
-import { FORGET_PASSWORD_PREFIX } from './../constants';
+import { isAuth } from "../middleware/isAuth";
+import  jwt from 'jsonwebtoken';
 
 @ObjectType()
 class FieldError {
@@ -120,6 +120,7 @@ export class UsersResolver {
     }
 
     @Mutation(() => Boolean)
+    @UseMiddleware(isAuth)
     async logout(
         @Ctx() { req, res }: MyContext
     ): Promise<Boolean> {
@@ -139,7 +140,7 @@ export class UsersResolver {
     @Mutation(() => UserResponse)
     async forgotPassword(
         @Arg("usernameOrEmail") usernameOrEmail: string,
-        @Ctx() { redis }: MyContext
+        // @Ctx() { redis }: MyContext
     ): Promise<UserResponse> {
         const user = await User.findOne({ where: 
             usernameOrEmail.includes("@")
@@ -155,13 +156,21 @@ export class UsersResolver {
                 }]
             }
         };
-        const token = v4();
-        await redis.set(
-            FORGET_PASSWORD_PREFIX + token,
-            user.id, 
-            'ex', 
-            1000 * 60 * 60 * 24 * 3
+        // const token = v4();
+        // await redis.set(
+        //     FORGET_PASSWORD_PREFIX + token,
+        //     user.id, 
+        //     'ex', 
+        //     1000 * 60 * 60 * 24 * 3
+        // );
+
+        const token = jwt.sign(
+            { user: user.email },
+            process.env.SECRET_FORGOT_PASSWORD as string,
+            { expiresIn: "1h" }
         );
+        await User.update(user.id, { resetLink: token });
+
         const href = `${process.env.CORS_ORIGIN}/resetPassword/${token}`;
         const isSuccess = await sendEmail(
             user.email,
@@ -187,22 +196,31 @@ export class UsersResolver {
     async resetPassword(
         @Arg("token") token: string,
         @Arg("password") password: string,
-        @Ctx() { redis }: MyContext
+        // @Ctx() { redis }: MyContext
     ): Promise<Boolean> {
-        const key = FORGET_PASSWORD_PREFIX + token;
-        const userId = await redis.get(key);
-        if (!userId) return false;
+        // const key = FORGET_PASSWORD_PREFIX + token;
+        // const userId = await redis.get(key);
 
-        const userIdNum = Number(userId);
-        const user = await User.findOne(userIdNum);
+        try {
+            jwt.verify(
+                token, 
+                process.env.SECRET_FORGOT_PASSWORD as string
+            )
+        } catch(err) {
+            console.log('incorrect token or expired: ', err.message);
+            return false;
+        }
+        
+        const user = await User.findOne({ resetLink: token });
         if (!user) return false;
 
         try {
-            await User.update(
-                { id: userIdNum },
-                { password: await argon2.hash(password) }
+            await User.update(user.id, { 
+                    password: await argon2.hash(password),
+                    resetLink: ''
+                }
             );
-            await redis.del(key);
+            // await redis.del(key);
         } catch(err) {
             console.log(err);
             return false;
