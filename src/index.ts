@@ -72,7 +72,7 @@ const main = async () => {
     //     disableTouch: true // Disables re-saving and resetting the TTL when using touch
     // });
 
-    // app.set("proxy", 1);
+    app.set("trust proxy", 1);
 
     app.use(
         cors({
@@ -88,7 +88,7 @@ const main = async () => {
             cookie: {
                 maxAge: 1000 * 60 * 60 * 24 * 365,
                 httpOnly: true,
-                sameSite: 'lax', // csrf
+                sameSite: 'none', // csrf
                 secure: __prod__, // cookie only works in htpps
             },
             saveUninitialized: false,
@@ -99,6 +99,7 @@ const main = async () => {
 
     const apolloServer = new ApolloServer({
         playground: true,
+        introspection:  __prod__,
         schema: await buildSchema({
             resolvers: [HelloResolver, PostsResolver, UsersResolver],
             validate: false
